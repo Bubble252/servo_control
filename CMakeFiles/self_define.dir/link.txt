@@ -1,0 +1,1 @@
+/usr/bin/c++  -O3 CMakeFiles/self_define.dir/main.cpp.o CMakeFiles/self_define.dir/servo.cpp.o -o self_define  /home/ubuntu/桌面/FT_servo/FTServo_Linux/src/libSCServo.a -lpthread 
