@@ -7,112 +7,90 @@
 #include <cmath>
 #include <atomic>
 #include <csignal>
-#include "SCServo.h"
 #include <vector>
-#include <algorithm> 
+#include <algorithm>
+#include "SCServo.h"
 
 #define LOG_INFO(msg) std::cerr << "[INFO] " << msg << std::endl
 #define LOG_ERROR(msg) std::cerr << "[ERROR] " << msg << std::endl
 
-
-template<int ServoID, int DefaultAngle>
-// 定义舵机控制类
 class Servo {
 public:
+    Servo(int id, const std::string& port, float Kp = 1.0f, float Ki = 0.0f, float Kd = 0.01f)
+        : ServoID(id), serial_port(port), speed_pid(Kp, Ki, Kd)
+    {
 
+        activeServoIDs.push_back(ServoID);
+        feedback.id = ServoID;
+        speed_max = 1000;
+        acceleration = 50;
 
-    // 构造函数，接受串口参数
-    Servo(const std::string& serial_port,float Kp = 1.0f, float Ki = 0.0f, float Kd = 0.01f)
-        : serial_port(serial_port.c_str()), speed_pid(Kp, Ki, Kd) {
-        stopFlag = false;// 初始化停止标志
-        activeServoIDs.push_back(ServoID); // 将当前实例的 ID 添加到静态容器中
-        std::cerr << "Configuring Servo ID " << ServoID 
-                  << " with PID: " << Kp << ", " << Ki << ", " << Kd << std::endl;
-        feedback.id = ServoID; // 初始化反馈结构体的 ID
-        speed_max = 1000; // 设置默认最大速度
-        acceleration = 50; // 设置默认加速度
-
-
-
-        init(); // 调用初始化函数
-        //sm_st.WritePosEx(ServoID, DefaultAngle, speed_max, acceleration); // 设置默认角度
-        std::cerr << "[INFO] 舵机初始化完成。" << std::endl;
-
-    }//在此处接收了串口参数，并初始化 PID 控制器 PID控制器的参数来源于模板参数 
-    //这个构造函数的调用方法是 Servo<1, 1.0f, 0.0f, 0.0f> servo("/dev/ttyUSB0");
-
-
-    ~Servo() {
-        stopFlag = true;
-        auto it = std::remove(activeServoIDs.begin(), activeServoIDs.end(), static_cast<int>(ServoID));
-        activeServoIDs.erase(it, activeServoIDs.end()); // 正确使用 erase 和 remove
-        std::cerr << "[INFO] 停止舵机..." << std::endl;
-        sm_st.WriteSpe(ServoID, 0, 50);
-        sm_st.end();
-        std::cerr << "[INFO] 已退出程序。" << std::endl;
-    }
-
-    void init() {// 初始化函数 会设置舵机的恒速模式，并注册 Ctrl+C 信号处理函数
-        LOG_INFO("初始化舵机...");
-        if (!sm_st.begin(1000000, serial_port)) {
-            LOG_ERROR("串口初始化失败");
-            throw std::runtime_error("串口初始化失败");
+        if (!initialized) {
+            LOG_INFO("初始化串口...");
+            if (!sm_st.begin(1000000, serial_port.c_str())) {
+                LOG_ERROR("串口初始化失败");
+                throw std::runtime_error("串口初始化失败");
+            }
+            
+            std::signal(SIGINT, signalHandler);
+            initialized = true;
         }
+
+        LOG_INFO("舵机初始化完成。");
         sm_st.WheelMode(ServoID);  // 设置恒速模式
-        std::signal(SIGINT, signalHandler);  // 注册 Ctrl+C 信号处理
     }
 
-
-    void setDefaultAngle(int angle) {// 设置默认角度
-        default_angle = angle;
-        std::cerr << "设置默认角度为: " << default_angle << std::endl;
-    }
-
-    void setSpeedMax(int speed) {// 设置最大速度
-        speed_max = speed;
-        std::cerr << "设置最大速度为: " << speed_max << std::endl;
-    }
-
-    void setAcceleration(int acc) {// 设置加速度
-        acceleration = acc;
-        std::cerr << "设置加速度为: " << acceleration << std::endl;
-    }
+~Servo() {
+stopFlag=true;
+    auto it = std::remove(activeServoIDs.begin(), activeServoIDs.end(), ServoID);
+    activeServoIDs.erase(it, activeServoIDs.end());
+    LOG_INFO("舵机对象销毁。");
+}
 
 
-    void PID_setAngle_control(int target_angle) {//使用 PID 控制方法
-        std::cerr << "设置目标角度(PID): " << target_angle << std::endl;
+    void setDefaultAngle(int angle) { default_angle = angle; }
+    void setSpeedMax(int speed) { speed_max = speed; }
+    void setAcceleration(int acc) { acceleration = acc; }
+
+    void PID_setAngle_control(int target_angle) {
         ServoFeedback feedback = get_feedback(ServoID);
         update_servo_control_speed_pos_loop(target_angle, feedback.pos);
-
     }
 
-    void normally_setAngle_control(int target_angle) {//使用常规方法
-        std::cerr << "设置目标角度(常规): " << target_angle << std::endl;
-        sm_st.WritePosEx(ServoID, target_angle,speed_max, acceleration);
+    void normally_setAngle_control(int target_angle) {
+        sm_st.WritePosEx(ServoID, target_angle, speed_max, acceleration);
     }
 
-
-    void stop_servo(int id) {// 停止指定 ID 的舵机
-        std::cerr << "停止舵机 ID: " << id << std::endl;
+    void stop_servo(int id) {
         sm_st.WriteSpe(id, 0, acceleration);
     }
 
-    void terminateAllServos() {// 停止所有舵机
-        std::cerr << "停止所有舵机..." << std::endl;
+    static void terminateAllServos() {
         for (int id : activeServoIDs) {
-            sm_st.WriteSpe(id, 0, acceleration);
+            sm_st.WriteSpe(id, 0, 50);
         }
         stopFlag = true;
     }
 
-    // 静态方法，用于检查是否停止
     static bool isStopped() {
         return stopFlag;
     }
+    
+        // 2. 增加单独函数关闭串口，程序退出时调用
+    static void closeSerial() {
+    if (initialized) {
+        sm_st.end();
+        initialized = false;
+        LOG_INFO("串口关闭完成。");
+       }
+    }
 
 private:
-
-    static inline std::vector<int> activeServoIDs; // 静态容器，存储所有实例的 ID
+    int ServoID;
+    std::string serial_port;
+    int default_angle = 512;
+    int speed_max;
+    int acceleration;
 
     struct PID {//PID控制器结构体
         // PID 控制器参数
@@ -129,31 +107,17 @@ private:
 
     PID speed_pid;  // PID 控制器实例
 
-    const char* serial_port;// 串口参数
-
-    int default_angle = DefaultAngle; // 默认角度
-
-    int speed_max; // 最大速度
-
-    int acceleration; // 加速度
-
-
     struct ServoFeedback {
-        int id = 1;// 舵机 ID
-
+        int id = 1;
         int pos = -1;
         int speed = -1;
         int current = -1;
         int load = -1;
         int move = -1;
         int voltage = -1;
-        int temper = -1; // 温度
-
-
-        bool success = false;// 是否成功获取反馈
-    };
-
-    ServoFeedback feedback;// 舵机反馈结构体实例
+        int temper = -1;
+        bool success = false;
+    } feedback;
 
     ServoFeedback get_feedback(int id) {// 获取舵机反馈
         ServoFeedback fb;
@@ -207,7 +171,6 @@ private:
         return pid.output;
     }
 
-
     // 更新舵机控制
     // 这里使用 PID 控制器来计算目标速度，并发送给舵机
     // parameters:
@@ -218,30 +181,20 @@ private:
         sm_st.WriteSpe(ServoID, int(target_speed), acceleration);
     }
 
+    static inline bool initialized = false;
+    static inline std::atomic<bool> stopFlag = false;
+    static inline std::vector<int> activeServoIDs;
+    static inline SMS_STS sm_st;
 
+static void signalHandler(int signum) {
+    const char msg[] = "\n[INFO] 捕捉到 Ctrl+C，准备退出...\n";
+    write(STDOUT_FILENO, msg, sizeof(msg) - 1);
+    stopFlag = true;
+}
+    
+    
 
-
-
-
-    static inline std::atomic<bool> stopFlag;// 停止标志
-    // 静态成员变量，用于存储 ServoController 的状态
-    static SMS_STS sm_st;//这个是 SCServo 的状态管理类实例
-
-    //这些变量是静态的，因为它们需要在所有 Servo 实例之间共享
-    // 这样可以避免每个实例都创建自己的 SMS_STS 实例，从而节省内存和资源
-
-
-
-    // 信号处理函数，用于捕捉 Ctrl+C 信号
-    static void signalHandler(int signum) {// 信号处理函数
-        std::cout << "\n[INFO] 捕捉到 Ctrl+C，准备退出...\n";
-        stopFlag = true;
-    }
 };
-
-// 静态成员变量定义
-template<int ServoID, int DefaultAngle>
-SMS_STS Servo<ServoID, DefaultAngle>::sm_st;
 
 #endif // SERVO_CONTROLLER_H
 
