@@ -92,6 +92,14 @@ private:
     int speed_max;
     int acceleration;
     int max_value=4096;//多圈处理
+    
+    int deadzone_min = -1; // 默认未启用
+int deadzone_max = -1;
+
+void setDeadzone(int min_val, int max_val) {
+    deadzone_min = min_val;
+    deadzone_max = max_val;
+}
 
     struct PID {//PID控制器结构体
         // PID 控制器参数
