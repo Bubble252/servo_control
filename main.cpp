@@ -9,8 +9,8 @@ int main(int argc,char **argv)//这个是主函数
     // 创建舵机实例
     //Servo<1, 1952> servo("/dev/ttyUSB0", 1.0f, 0.1f, 0.01f);
     //Servo<2, 100> servo2("/dev/ttyUSB0", 1.0f, 0.1f, 0.01f);
-    Servo servo1(1, "/dev/ttyUSB0", 1.0f, 0.1f, 0.01f);
-    Servo servo2(2, "/dev/ttyUSB0", 1.0f, 0.1f, 0.01f);
+    Servo servo1(1, "/dev/ttyUSB0", 4.0f, 0.0f, 0.01f);
+    Servo servo2(2, "/dev/ttyUSB0", 4.0f, 0.0f, 0.01f);
     
     //这几行其实可用可不用
     // 设置舵机参数

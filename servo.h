@@ -91,6 +91,7 @@ private:
     int default_angle = 512;
     int speed_max;
     int acceleration;
+    int max_value=4096;//多圈处理
 
     struct PID {//PID控制器结构体
         // PID 控制器参数
@@ -142,6 +143,12 @@ private:
 
     float pid_calculate(PID &pid, float target, float current, float out_max) {// PID 计算函数
         float error = target - current;
+        if (error > max_value / 2)
+        error -= max_value;
+        else if (error < -max_value / 2)
+        error += max_value;
+        
+        
         pid.integral += error;
 
         if (pid.integral > pid.integral_limit) pid.integral = pid.integral_limit;
